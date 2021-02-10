@@ -3,26 +3,17 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+typedef enum {
+	WAIT,
+	PLAY,
+	PAUSE,
+} t_state;
+
 GtkWidget *window;
 GtkWidget *image;
 GdkPixbuf *pixbuf;
 enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_RGB565;
-
-// GTK Callbacks
-
-bool key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
-{
-	if (event->keyval == GDK_KEY_Escape) {
-		gtk_main_quit();
-		return TRUE;
-	}
-	return FALSE;
-}
-
-bool timeout_cb(void *data) {
-	retro_run();
-	return true;
-}
+t_state state = WAIT;
 
 // Libretro Callbacks
 
@@ -119,11 +110,94 @@ void input_poll_cb(void) {
 int16_t input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
 }
 
-int main(int ac, char **av) {
-	struct retro_system_info systeminfo;
+void load_rom(char *filepath) {
 	struct retro_game_info gameinfo;
+	
+	retro_unload_game();
+	gameinfo.path = filepath;
+	gameinfo.data = malloc(8388608); // max 8 MB cartridges
+	FILE *f = fopen(gameinfo.path, "rb");
+	if (!f) exit(printf("[Frontend] fopen error: %s\n", gameinfo.path));
+	gameinfo.size = 0;
+	while (fread((void*)gameinfo.data + gameinfo.size, 1, 0x100, f) == 0x100)
+		gameinfo.size += 0x100;
+	if (retro_load_game(&gameinfo))
+		state = PLAY;
+	else
+		exit(puts("[Frontend] load game error"));
+}
+
+// GTK Callbacks
+
+bool key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
+{
+	if (event->keyval == GDK_KEY_Escape) {
+		gtk_main_quit();
+		return TRUE;
+	}
+	return FALSE;
+}
+
+bool timeout_cb(void *data) {
+	if (state == PLAY)
+		retro_run();
+	return true;
+}
+
+bool load_btn_clicked(GtkWidget *widget, GdkEventKey *event, gpointer data) {
+	GtkWidget *dialog = gtk_file_chooser_dialog_new ("Open File",
+			(GtkWindow*)window,
+			GTK_FILE_CHOOSER_ACTION_OPEN,
+			"Cancel", GTK_RESPONSE_CANCEL,
+			"Open", GTK_RESPONSE_ACCEPT,
+			NULL);
+
+	int res = gtk_dialog_run (GTK_DIALOG (dialog));
+	if (res == GTK_RESPONSE_ACCEPT) {
+		char *filename;
+		GtkFileChooser *chooser = GTK_FILE_CHOOSER (dialog);
+		filename = gtk_file_chooser_get_filename (chooser);
+		load_rom(filename);
+		g_free (filename);
+	}
+	gtk_widget_destroy (dialog);
+}
+
+bool pause_btn_clicked(GtkWidget *widget, GdkEventKey *event, gpointer data) {
+	if (state == PLAY) {
+		state = PAUSE;
+		gtk_button_set_label((GtkButton*)widget, "Play");
+	} else if (state == PAUSE) {
+		state = PLAY;
+		gtk_button_set_label((GtkButton*)widget, "Pause");
+	}
+}
+
+int main(int ac, char **av) {
+
+	// Init GTK
+	gtk_init(&ac, &av);
+	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	g_signal_connect_swapped(G_OBJECT(window), "destroy", G_CALLBACK(gtk_main_quit), NULL);
+	g_signal_connect(window, "key_press_event", G_CALLBACK(key_press_event), NULL);
+
+	GtkWidget *container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+	gtk_container_add(GTK_CONTAINER(window), container);
+
+	pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, 0, 8, 160, 144);
+	image = gtk_image_new_from_pixbuf(pixbuf);
+	gtk_container_add(GTK_CONTAINER(container), image);
+
+	GtkWidget *load_button = gtk_button_new_with_label("load");
+	g_signal_connect(load_button, "clicked", G_CALLBACK(load_btn_clicked), NULL);
+	gtk_container_add(GTK_CONTAINER(container), load_button);
+
+	GtkWidget *pause_button = gtk_button_new_with_label("pause");
+	g_signal_connect(pause_button, "clicked", G_CALLBACK(pause_btn_clicked), NULL);
+	gtk_container_add(GTK_CONTAINER(container), pause_button);
 
 	// Init libretro core
+	struct retro_system_info systeminfo;
 	retro_get_system_info(&systeminfo);
 	printf("[Frontend] Core name: %s\n", systeminfo.library_name);
 	retro_set_environment(environment_cb);
@@ -133,29 +207,12 @@ int main(int ac, char **av) {
 	retro_set_input_poll(input_poll_cb);
 	retro_set_input_state(input_state_cb);
 	retro_init();
-	
-	// Load ROM
-	if (ac < 2)
-		exit(puts("[Frontend] need rom path as argument"));
-	gameinfo.path = av[1];
-	gameinfo.data = malloc(8388608); // max 8 MB cartridges
-	FILE *f = fopen(gameinfo.path, "rb");
-	if (!f) exit(printf("[Frontend] fopen error: %s\n", gameinfo.path));
-	gameinfo.size = 0;
-	while (fread((void*)gameinfo.data + gameinfo.size, 1, 0x100, f) == 0x100)
-		gameinfo.size += 0x100;
-	if (!retro_load_game(&gameinfo))
-		exit(puts("[Frontend] load game error"));
 
-	// Init GTK
-	gtk_init(&ac, &av);
-	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-	pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, 0, 8, 160, 144);
-	image = gtk_image_new_from_pixbuf(pixbuf);
-	gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(image));
-	gtk_widget_show_all(window);
-	g_signal_connect_swapped(G_OBJECT(window), "destroy", G_CALLBACK(gtk_main_quit), NULL);
-	g_signal_connect(window, "key_press_event", G_CALLBACK(key_press_event), NULL);
+	if (ac == 2) {
+		load_rom(av[1]);
+	}
+
 	g_timeout_add(16, (GSourceFunc)timeout_cb, NULL);
+	gtk_widget_show_all(window);
 	gtk_main();
 }
