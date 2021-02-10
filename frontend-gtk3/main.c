@@ -39,7 +39,7 @@ bool environment_cb(unsigned cmd, void *data) {
 	switch (cmd) {
 		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
 			pixel_format = *(enum retro_pixel_format*)data;
-			printf("RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: %d\n", pixel_format);
+			printf("[Frontend] RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: %d\n", pixel_format);
 			return TRUE;
 		}
 		case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
@@ -52,11 +52,11 @@ bool environment_cb(unsigned cmd, void *data) {
 			return FALSE;
 		case RETRO_ENVIRONMENT_GET_VARIABLE: {
 			struct retro_variable* variableData = (struct retro_variable *)data;
-			printf("RETRO_ENVIRONMENT_GET_VARIABLE: %s\n", variableData->key);
+			printf("[Frontend] RETRO_ENVIRONMENT_GET_VARIABLE: %s\n", variableData->key);
 			return FALSE;
 		}
 	}
-	printf("environment command: %u\n", cmd);
+	printf("[Frontend] environment command: %u\n", cmd);
 	return FALSE;
 }
 
@@ -78,16 +78,29 @@ void put_pixel(GdkPixbuf *pixbuf, int x, int y, guchar red, guchar green, guchar
 }
 
 void video_refresh_cb(const void *data, unsigned width, unsigned height, size_t pitch) {
-	printf(".");
-	fflush(stdout);
 	if (data == NULL)
 		return;
 	for (int y=0; y<144; y++) {
 		for (int x=0; x<160; x++) {
-			uint16_t px = ((uint16_t*)data)[y*pitch/sizeof(uint16_t) + x];
-			uint32_t r = (px >> 11) * (256/32);
-			uint32_t g = ((px >> 5) & 0x3f) * (256/64);
-			uint32_t b = (px & 0x1f) * (256/32);
+			uint32_t r, g, b;
+			switch (pixel_format) {
+				case RETRO_PIXEL_FORMAT_XRGB8888: {
+					uint8_t *px = ((uint8_t*)data) + (y*pitch + x*sizeof(uint32_t));
+					r = px[0];
+					g = px[1];
+					b = px[2];
+					break;
+				}
+				case RETRO_PIXEL_FORMAT_RGB565: {
+					uint16_t px = ((uint16_t*)data)[y*pitch/sizeof(uint16_t) + x];
+					r = ((px >> 11) & 0x1f) * (256/32);
+					g = ((px >> 5) & 0x3f) * (256/64);
+					b = (px & 0x1f) * (256/32);
+					break;
+				}
+				default:
+					printf("[Frontend] Pixel format not implemented\n");
+			}
 			put_pixel(pixbuf, x, y, r, g, b, 255);
 		}
 	}
@@ -112,7 +125,7 @@ int main(int ac, char **av) {
 
 	// Init libretro core
 	retro_get_system_info(&systeminfo);
-	printf("[Gbmu] Core name: %s\n", systeminfo.library_name);
+	printf("[Frontend] Core name: %s\n", systeminfo.library_name);
 	retro_set_environment(environment_cb);
 	retro_set_video_refresh(video_refresh_cb);
 	retro_set_audio_sample(audio_sample_cb);
@@ -123,16 +136,16 @@ int main(int ac, char **av) {
 	
 	// Load ROM
 	if (ac < 2)
-		exit(puts("need rom path as argument"));
+		exit(puts("[Frontend] need rom path as argument"));
 	gameinfo.path = av[1];
 	gameinfo.data = malloc(8388608); // max 8 MB cartridges
 	FILE *f = fopen(gameinfo.path, "rb");
-	if (!f) exit(printf("fopen error: %s\n", gameinfo.path));
+	if (!f) exit(printf("[Frontend] fopen error: %s\n", gameinfo.path));
 	gameinfo.size = 0;
 	while (fread((void*)gameinfo.data + gameinfo.size, 1, 0x100, f) == 0x100)
 		gameinfo.size += 0x100;
 	if (!retro_load_game(&gameinfo))
-		exit(puts("load game error"));
+		exit(puts("[Frontend] load game error"));
 
 	// Init GTK
 	gtk_init(&ac, &av);
