@@ -14,6 +14,7 @@ GtkWidget *image;
 GdkPixbuf *pixbuf;
 enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_RGB565;
 t_state state = WAIT;
+bool *keyboard_state;
 
 // Libretro Callbacks
 
@@ -108,6 +109,23 @@ void input_poll_cb(void) {
 }
 
 int16_t input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
+	//printf("device=%u id=%u\n", device, id);
+	switch (device) {
+		case RETRO_DEVICE_JOYPAD: {
+			switch (id) {
+				case RETRO_DEVICE_ID_JOYPAD_A: return keyboard_state[GDK_KEY_a];
+				case RETRO_DEVICE_ID_JOYPAD_B: return keyboard_state[GDK_KEY_b];
+				case RETRO_DEVICE_ID_JOYPAD_START: return keyboard_state[GDK_KEY_Return];
+				case RETRO_DEVICE_ID_JOYPAD_SELECT: return keyboard_state[GDK_KEY_BackSpace];
+				case RETRO_DEVICE_ID_JOYPAD_UP: return keyboard_state[GDK_KEY_Up];
+				case RETRO_DEVICE_ID_JOYPAD_DOWN: return keyboard_state[GDK_KEY_Down];
+				case RETRO_DEVICE_ID_JOYPAD_LEFT: return keyboard_state[GDK_KEY_Left];
+				case RETRO_DEVICE_ID_JOYPAD_RIGHT: return keyboard_state[GDK_KEY_Right];
+			}
+			return FALSE;
+		}
+	}
+	return FALSE;
 }
 
 void load_rom(char *filepath) {
@@ -131,11 +149,18 @@ void load_rom(char *filepath) {
 
 bool key_press_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
 {
-	if (event->keyval == GDK_KEY_Escape) {
+	if (event->keyval == GDK_KEY_Escape)
 		gtk_main_quit();
-		return TRUE;
-	}
-	return FALSE;
+	if (event->keyval < 0x10000)
+		keyboard_state[event->keyval] = TRUE;
+	return TRUE;
+}
+
+bool key_release_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
+{
+	if (event->keyval < 0x10000)
+		keyboard_state[event->keyval] = FALSE;
+	return TRUE;
 }
 
 bool timeout_cb(void *data) {
@@ -174,12 +199,14 @@ bool pause_btn_clicked(GtkWidget *widget, GdkEventKey *event, gpointer data) {
 }
 
 int main(int ac, char **av) {
+	keyboard_state = calloc(0x10000, sizeof(bool));
 
 	// Init GTK
 	gtk_init(&ac, &av);
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	g_signal_connect_swapped(G_OBJECT(window), "destroy", G_CALLBACK(gtk_main_quit), NULL);
 	g_signal_connect(window, "key_press_event", G_CALLBACK(key_press_event), NULL);
+	g_signal_connect(window, "key_release_event", G_CALLBACK(key_release_event), NULL);
 
 	GtkWidget *container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_container_add(GTK_CONTAINER(window), container);
@@ -212,7 +239,7 @@ int main(int ac, char **av) {
 		load_rom(av[1]);
 	}
 
-	g_timeout_add(16, (GSourceFunc)timeout_cb, NULL);
+	g_timeout_add_full(G_PRIORITY_HIGH, 16, (GSourceFunc)timeout_cb, NULL, NULL);
 	gtk_widget_show_all(window);
 	gtk_main();
 }
