@@ -3,6 +3,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#define SCREEN_SCALE 2
+
 typedef enum {
 	WAIT,
 	PLAY,
@@ -96,7 +98,10 @@ void video_refresh_cb(const void *data, unsigned width, unsigned height, size_t 
 			put_pixel(pixbuf, x, y, r, g, b, 255);
 		}
 	}
-	gtk_image_set_from_pixbuf((GtkImage*)image, pixbuf);
+	GdkPixbuf *pixbuf_scaled = gdk_pixbuf_scale_simple(
+			pixbuf, 160*SCREEN_SCALE, 144*SCREEN_SCALE, GDK_INTERP_NEAREST);
+	gtk_image_set_from_pixbuf((GtkImage*)image, pixbuf_scaled);
+	g_object_unref(pixbuf_scaled);
 }
 
 void audio_sample_cb(int16_t left, int16_t right) {
@@ -204,7 +209,7 @@ int main(int ac, char **av) {
 	// Init GTK
 	gtk_init(&ac, &av);
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-	g_signal_connect_swapped(G_OBJECT(window), "destroy", G_CALLBACK(gtk_main_quit), NULL);
+	g_signal_connect(G_OBJECT(window), "destroy", G_CALLBACK(gtk_main_quit), NULL);
 	g_signal_connect(window, "key_press_event", G_CALLBACK(key_press_event), NULL);
 	g_signal_connect(window, "key_release_event", G_CALLBACK(key_release_event), NULL);
 
@@ -212,7 +217,8 @@ int main(int ac, char **av) {
 	gtk_container_add(GTK_CONTAINER(window), container);
 
 	pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, 0, 8, 160, 144);
-	image = gtk_image_new_from_pixbuf(pixbuf);
+	image = gtk_image_new();
+	gtk_widget_set_size_request(image, 160*SCREEN_SCALE, 144*SCREEN_SCALE);
 	gtk_container_add(GTK_CONTAINER(container), image);
 
 	GtkWidget *load_button = gtk_button_new_with_label("load");
