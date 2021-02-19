@@ -7,6 +7,7 @@ BACKEND = src
 SRC_BACKEND = main.cpp Emulator.cpp
 OBJ_BACKEND = $(addprefix obj/,$(SRC_BACKEND:.cpp=.o))
 TEMPLATE_BACKEND = $(wildcard $(BACKEND)/*.tpp)
+CXX = g++ -Wall -Wextra
 .PHONY: all clean fclean re
 
 all: back-end $(NAME)
