@@ -10,7 +10,7 @@ TEMPLATE_BACKEND = $(wildcard $(BACKEND)/*.tpp)
 CXX = g++ -Wall -Wextra
 .PHONY: all clean fclean re
 
-all: back-end $(NAME)
+all: back-end #$(NAME)
 
 $(NAME): $(OBJ)
 	cc -o $@ $^ $(CORE) `pkg-config gtk+-3.0 --libs`
