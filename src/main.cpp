@@ -6,7 +6,7 @@
 /*   By: nathan <unkown@noaddress.com>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2021/02/10 23:59:48 by nathan            #+#    #+#             */
-/*   Updated: 2021/03/04 14:11:21 by nathan           ###   ########.fr       */
+/*   Updated: 2021/04/04 23:58:01 by nathan           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,7 +14,7 @@
 #include <iostream>
 #include <fstream>
 
-#define ROM_TEST "cpu_instrs/individual/01-special.gb"
+#define ROM_TEST "cpu_instrs/cpu_instrs.gb"
 
 int		main(int argc, char* argv[])
 {

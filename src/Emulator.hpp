@@ -6,7 +6,7 @@
 /*   By: nathan <unkown@noaddress.com>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2021/02/11 03:22:43 by nathan            #+#    #+#             */
-/*   Updated: 2021/03/06 12:44:50 by nathan           ###   ########.fr       */
+/*   Updated: 2021/03/10 19:20:07 by nathan           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -21,7 +21,7 @@ public:
 	static unsigned short readData(unsigned char nb);
 	static void writeByte(unsigned short addr, unsigned char data);
 	static unsigned char readByte();
-	static unsigned char readAddr(unsigned short addr);
+	static unsigned char& readAddr(unsigned short addr);
 	static void printRegisters();
 	static void setFlag0(unsigned char option = 2);
 	static void setFlagN(unsigned char option = 2);
@@ -39,6 +39,7 @@ public:
 
 
 
+	static void updateClockReg();
 	static void launch();
 	static unsigned char* getMemory(){return memory;};
 	static unsigned short pop();
@@ -64,6 +65,7 @@ private:
 	static unsigned short& DE;
 	static unsigned short& HL;
 	static bool IME;
+	static unsigned int clockCount;
 };
 
 #endif

@@ -6,7 +6,7 @@
 /*   By: nathan <unkown@noaddress.com>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2021/02/11 03:22:40 by nathan            #+#    #+#             */
-/*   Updated: 2021/03/06 13:49:53 by nathan           ###   ########.fr       */
+/*   Updated: 2021/04/04 23:58:26 by nathan           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,6 +14,8 @@
 #include <iostream> //to remove, debug
 #include "Operations.tpp"
 #include <iomanip>
+#include <vector>
+#include <algorithm>
 #include <unistd.h>
 
 unsigned char Emulator::memory[16 * 1024 * 1024] = {};
@@ -22,6 +24,7 @@ unsigned short Emulator::PC = 0x100;
 unsigned short Emulator::SP = 0;
 unsigned char Emulator::registers[8] = {};
 unsigned long Emulator::clock = 0;
+unsigned int Emulator::clockCount = 0;
 
 unsigned char& Emulator::A = registers[7];
 unsigned char& Emulator::B = registers[6];
@@ -51,12 +54,10 @@ void	Emulator::increment(unsigned char& reg)
 
 void	Emulator::decrement(unsigned char& reg)
 {
-	unsigned char tmp = reg & 0xF0;
-
+	setFlagH((reg & 0xF) - 1 < 0);
 	reg--;
 	setFlag0(reg == 0);
 	setFlagN(true);
-	//setFlagH(tmp != (reg & 0xF0)); wrong
 	clock += 1;
 }
 
@@ -83,7 +84,17 @@ void Emulator::writeByte(unsigned short src, unsigned char data)
 {
 	memory[src] = data;
 	if (src == 0xFF44)// tmp debug
+	{
 		std::cout << "data in FF44: " << data << std::endl;
+		memory[0xFF44] = 0;
+	}
+	if (src == 0xFF41)// tmp debug
+		std::cout << "data in FF41: " << data << std::endl;
+	if (src == 0xFF04)
+	{
+		std::cout << "reset 0xFF04 clock" << std::endl;
+		memory[0xFF04] = 0;
+	}
 	if (src == 0xFF02 && data == 0x81)
 		std::cout << (char)memory[0xFF01];//<< std::endl;
 }
@@ -107,7 +118,7 @@ unsigned char*	Emulator::getSource(unsigned char opcode)
 		src = &L;
 	if ((opcode & 0x7) == 0x6)
 	{
-		src = &memory[HL];
+		src = &readAddr(HL);
 		clock += 1;
 	}
 	return (src);
@@ -190,37 +201,37 @@ bool	Emulator::getFlagC()
 
 void	Emulator::setFlag0(unsigned char option)
 {
-	if (option == 0)
-		F = F & ((unsigned char)option << 7);
+	if (option == 0 && (F & (1 << 7)))
+		F = F - ((unsigned char)1 << 7);
 	else if (option == 1)
 		F = F | ((unsigned char)option << 7);
 }
 
 void	Emulator::setFlagN(unsigned char option)
 {
-	if (option == 0)
-		F = F | ((unsigned char)option << 6);
+	if (option == 0 && (F & (1 << 6)))
+		F = F - ((unsigned char)1 << 6);
 	else if (option == 1)
 		F = F | ((unsigned char)option << 6);
 }
 
 void	Emulator::setFlagH(unsigned char option)
 {
-	if (option == 0)
-		F = F | ((unsigned char)option << 5);
+	if (option == 0 && (F & (1 << 5)))
+		F = F - ((unsigned char)1 << 5);
 	else if (option == 1)
 		F = F | ((unsigned char)option << 5);
 }
 
 void	Emulator::setFlagC(unsigned char option)
 {
-	if (option == 0)
-		F = F | ((unsigned char)option << 4);
+	if (option == 0 && (F & (1 << 4)))
+		F = F - ((unsigned char)1 << 4);
 	else if (option == 1)
 		F = F | ((unsigned char)option << 4);
 }
 
-unsigned char Emulator::readAddr(unsigned short addr)
+unsigned char& Emulator::readAddr(unsigned short addr)
 {
 	return (memory[addr]);
 }
@@ -264,7 +275,7 @@ void Emulator::executeOpcode2(unsigned char opcode)
 		case 0x8: case 0x9: case 0xA: case 0xB: case 0xC: case 0xD: case 0xE: case 0xF: // RRC X
 			src = getSource2(opcode);
 			tmp = *src;
-			setFlagC((tmp >> 7) & 0x1);
+			setFlagC(tmp & 0x1);
 			*src >>= 1;
 			*src |= (getFlagC() << 7);
 			setFlag0(*src == 0);
@@ -288,7 +299,7 @@ void Emulator::executeOpcode2(unsigned char opcode)
 			tmp = *src;
 			*src >>= 1;
 			*src |= (getFlagC() << 7);
-			setFlagC((tmp >> 7) & 0x1);
+			setFlagC(tmp & 0x1);
 			setFlag0(*src == 0);
 			setFlagN(0);
 			setFlagH(0);
@@ -309,7 +320,7 @@ void Emulator::executeOpcode2(unsigned char opcode)
 			tmp = *src;
 			*src >>= 1;
 			*src |= (tmp & (1 << 7));
-			setFlagC((tmp >> 7) & 0x1);
+			setFlagC(tmp & 0x1);
 			setFlag0(*src == 0);
 			setFlagN(0);
 			setFlagH(0);
@@ -330,7 +341,7 @@ void Emulator::executeOpcode2(unsigned char opcode)
 			src = getSource2(opcode);
 			tmp = *src;
 			*src >>= 1;
-			setFlagC((tmp >> 7) & 0x1);
+			setFlagC(tmp & 0x1);
 			setFlag0(*src == 0);
 			setFlagN(0);
 			setFlagH(0);
@@ -478,10 +489,10 @@ void Emulator::executeOpcode2(unsigned char opcode)
 void Emulator::executeOpcode(unsigned char opcode)
 {
 	unsigned char* src;
-	unsigned short tmp;
+	unsigned short tmp = 0;
 	switch (opcode)
 	{
-		case 0: // NOP
+		case 0x00: // NOP
 			clock += 1;
 			break;
 		case 0x01: // LD BC, d16
@@ -501,7 +512,7 @@ void Emulator::executeOpcode(unsigned char opcode)
 			break;
 		case 0x05: // DEC B
 			decrement(B);
-				break;
+			break;
 		case 0x06: // LD B, d8
 			B = readData(1);
 			clock += 2;
@@ -509,10 +520,10 @@ void Emulator::executeOpcode(unsigned char opcode)
 		case 0x07: // RLCA
 			setFlagC(A >> 7);
 			A <<= 1;
-			setFlag0(false);
-			setFlagH(false);
-			setFlagN(false);
-			A |= getFlagC();
+			setFlag0(0);
+			setFlagH(0);
+			setFlagN(0);
+			A |= (getFlagC() << 7);
 			clock += 1;
 			break;
 		case 0x08: // LD (a16), SP
@@ -524,13 +535,13 @@ void Emulator::executeOpcode(unsigned char opcode)
 		case 0x09: // ADD HL, BC
 			tmp = HL;
 			HL += BC;
-			setFlagN(false);
-			setFlagH((tmp & 0xFE00) != (HL & 0xFE00));//TODO to check which bit half carry
+			setFlagN(0);
+			setFlagH((tmp & 0xF000) != (HL & 0xF000));
 			setFlagC(tmp > HL);
 			clock += 2;
 			break;
 		case 0x0A: // LD A, (BC)
-			A = memory[BC];
+			A = readAddr(BC);
 			clock += 2;
 			break;
 		case 0x0B: // DEC BC
@@ -558,6 +569,8 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 1;
 			break;
 		case 0x10: // STOP
+			std::cout << "STOP INSTRUCTION NOT MADE" << std::endl;
+			exit(0);
 			//TODO
 			clock += 1;
 			break;
@@ -585,12 +598,13 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 2;
 			break;
 		case 0x17: // RLA
+			tmp = A;
 			A <<= 1;
 			setFlag0(0);
 			setFlagN(0);
 			setFlagH(0);
 			A |= getFlagC();
-			setFlagC(0);
+			setFlagC(tmp >> 7);
 			clock += 1;
 			break;
 		case 0x18: // JR s8
@@ -601,12 +615,12 @@ void Emulator::executeOpcode(unsigned char opcode)
 			tmp = HL;
 			HL += DE;
 			setFlagN(false);
-			setFlagH((tmp & 0xFE00) != (HL & 0xFE00));//TODO to check which bit half carry
+			setFlagH((tmp & 0xF000) != (HL & 0xF000));
 			setFlagC(tmp > HL);
 			clock += 2;
 			break;
 		case 0x1A: // LD A, (DE)
-			A = memory[DE];
+			A = readAddr(DE);
 			clock += 2;
 			break;
 		case 0x1B: // DEC DE
@@ -624,16 +638,17 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 2;
 			break;
 		case 0x1F: // RRA
-			tmp = A & (1 << 7);
+			tmp = A;
 			A >>= 1;
-			setFlag0(false);
-			setFlagN(false);
-			setFlagH(false);
 			A |= (getFlagC() << 7);
+			setFlag0(0);
+			setFlagN(0);
+			setFlagH(0);
+			setFlagC(tmp & 0x1);
 			clock += 1;
 			break;
 		case 0x20: // JR NZ, s8
-			if (!getFlag0() && clock++)//TODO check if clock
+			if (!getFlag0())
 				PC = (char)readData(1) + PC;
 			else
 				PC++;
@@ -662,20 +677,20 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 2;
 			break;
 		case 0x27: // DAA
-			if (getFlagH() || (!getFlagN() && (A & 0xf) > 9))// TODO to verify
-				tmp = A | 0x6;
-			if (getFlagC() || (getFlagN() && A > 0x99))
+			if (getFlagH() || (!getFlagN() && (A & 0xf) > 9))
+				tmp |= 0x6;
+			if (getFlagC() || (!getFlagN() && A > 0x99))
 			{
 				tmp |= 0x60;
 				setFlagC(1);
 			}
 			A = A + (getFlagN() ? -tmp : tmp);
 			setFlag0(A == 0);
-			setFlagN(0);
+			setFlagH(0);
 			clock += 1;
 			break;
 		case 0x28: // JR Z, s8
-			if (getFlag0() && clock++)
+			if (getFlag0())
 				PC = (char)readData(1) + PC;
 			else
 				PC++;
@@ -684,13 +699,14 @@ void Emulator::executeOpcode(unsigned char opcode)
 		case 0x29: // ADD HL, HL
 			tmp = HL;
 			HL += HL;
-			setFlagN(false);
-			setFlagH((tmp & 0xFE00) != (HL & 0xFE00));//TODO to check which bit half carry
+			setFlagN(0);
+			setFlagH((tmp & 0xF000) != (HL & 0xF000));
 			setFlagC(tmp > HL);
 			clock += 2;
 			break;
 		case 0x2A: //LD A, (HL+)
-			A = memory[HL++];
+			A = readAddr(HL);
+			HL++;
 			clock += 2;
 			break;
 		case 0x2B: // DEC HL
@@ -707,14 +723,14 @@ void Emulator::executeOpcode(unsigned char opcode)
 			L = readData(1);
 			clock += 2;
 			break;
-		case 0x2F: // CCF
+		case 0x2F: // CPL
 			A ^= A;
 			setFlagH(1);
 			setFlagN(1);
 			clock += 1;
 			break;
 		case 0x30: // JR NC, s8
-			if (!getFlagC() && clock++)//TODO check if clock
+			if (!getFlagC())
 				PC = (char)readData(1) + PC;
 			else
 				PC++;
@@ -733,11 +749,11 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 2;
 			break;
 		case 0x34: // INC (HL)
-			increment(memory[HL]);
+			increment(readAddr(HL));
 			clock += 2;
 			break;
 		case 0x35: // DEC (HL)
-			decrement(memory[HL]);
+			decrement(readAddr(HL));
 			clock += 2;
 			break;
 		case 0x36: // LD (HL), d8
@@ -751,7 +767,7 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 1;
 			break;
 		case 0x38: //JR C, s8
-			if (getFlagC() && clock++)
+			if (getFlagC())
 				PC = (char)readData(1) + PC;
 			else
 				PC++;
@@ -761,12 +777,13 @@ void Emulator::executeOpcode(unsigned char opcode)
 			tmp = HL;
 			HL += SP;
 			setFlagN(false);
-			setFlagH((tmp & 0xFE00) != (HL & 0xFE00));//TODO to check which bit half carry
+			setFlagH((tmp & 0xF000) != (HL & 0xF000));
 			setFlagC(tmp > HL);
 			clock += 2;
 			break;
 		case 0x3A: // LD A, (HL-)
-			A = memory[HL--];
+			A = readAddr(HL);
+			HL--;
 			clock += 2;
 			break;
 		case 0x3B: // DEC SP
@@ -784,9 +801,9 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 2;
 			break;
 		case 0x3F: // CCF
-			setFlagC(!getFlagC());
-			setFlagH(0);
 			setFlagN(0);
+			setFlagH(0);
+			setFlagC(!getFlagC());
 			clock += 1;
 			break;
 		case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47:// loads
@@ -827,7 +844,7 @@ void Emulator::executeOpcode(unsigned char opcode)
 			A = A - *src;
 			setFlag0(A == 0);
 			setFlagN(1);
-			setFlagH((tmp & 0xF0) != (A & 0xF0));
+			setFlagH((tmp & 0xF) < (*src & 0xF));
 			clock += 1;
 			break;
 		case 0x98: case 0x99: case 0x9A: case 0x9B: case 0x9C: case 0x9D: case 0x9E: case 0x9F: // SBC A, X
@@ -837,7 +854,7 @@ void Emulator::executeOpcode(unsigned char opcode)
 			A = A - *src - getFlagC();
 			setFlag0(A == 0);
 			setFlagN(1);
-			setFlagH((tmp & 0xF0) != (A & 0xF0));
+			setFlagH((tmp & 0xF) < (*src & 0xF) + getFlagC());
 			setFlagC(tmp > A);
 			clock += 1;
 			break;
@@ -852,21 +869,21 @@ void Emulator::executeOpcode(unsigned char opcode)
 			A ^= *getSource(opcode);
 			setFlag0(A == 0);
 			setFlagN(0);
-			setFlagH(1);
+			setFlagH(0);
 			setFlagC(0);
 			break;
 		case 0xB0: case 0xB1: case 0xB2: case 0xB3: case 0xB4: case 0xB5: case 0xB6: case 0xB7: // OR X
 			A |= *getSource(opcode);
 			setFlag0(A == 0);
 			setFlagN(0);
-			setFlagH(1);
+			setFlagH(0);
 			setFlagC(0);
 			break;
 		case 0xB8: case 0xB9: case 0xBA: case 0xBB: case 0xBC: case 0xBD: case 0xBE: case 0xBF: // CP X
 			src = getSource(opcode);
 			setFlag0(*src == A);
 			setFlagN(1);
-			setFlagH();//TODO
+			setFlagH((A & 0xF) < (*src & 0xF));
 			setFlagC(*src > A);
 			clock += 1;
 			break;
@@ -879,11 +896,9 @@ void Emulator::executeOpcode(unsigned char opcode)
 			BC = pop();
 			break;
 		case 0xC2: // JP NZ, a16
+			tmp = readData(2);
 			if (!getFlag0())
-			{
-				PC = readData(2);
-				clock += 1;
-			}
+				PC = tmp;
 			clock += 3;
 			break;
 		case 0xC3: // JP a16
@@ -891,9 +906,9 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 4;
 			break;
 		case 0xC4: // CALL NZ, a16
+			tmp = readData(2);
 			if (!getFlag0())
 			{
-				tmp = readData(2);
 				push(PC);
 				PC = tmp;
 				clock += 3;
@@ -930,19 +945,16 @@ void Emulator::executeOpcode(unsigned char opcode)
 			break;
 		case 0xCA: // JP Z, a16
 			if (getFlag0())
-			{
 				PC = readData(2);
-				clock += 1;
-			}
 			clock += 3;
 			break;
 		case 0xCB: // 16 bit opCode
 			executeOpcode2(readData(1));
 			break;
 		case 0xCC: // CALL Z, a16
+			tmp = readData(2);
 			if (getFlag0())
 			{
-				tmp = readData(2);
 				push(PC);
 				PC = tmp;
 				clock += 3;
@@ -956,7 +968,12 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 6;
 			break;
 		case 0xCE: // ADC A, d8
-			A = readData(1) + getFlagC();
+			tmp = A;
+			A = A + readData(1) + getFlagC();
+			setFlag0(A == 0);
+			setFlagN(0);
+			setFlagH((tmp & 0xF0) != (A & 0xF0));
+			setFlagC(tmp > A);
 			clock += 2;
 			break;
 		case 0xCF: // RST 1
@@ -974,17 +991,15 @@ void Emulator::executeOpcode(unsigned char opcode)
 			DE = pop();
 			break;
 		case 0xD2: // JP NC, a16
+			tmp = readData(2);
 			if (!getFlag0())
-			{
-				PC = readData(2);
-				clock += 1;
-			}
+				PC = tmp;
 			clock += 3;
 			break;
 		case 0xD4: // CALL NC, a16
+			tmp = readData(2);
 			if (!getFlagC())
 			{
-				tmp = readData(2);
 				push(PC);
 				PC = tmp;
 				clock += 3;
@@ -1000,7 +1015,7 @@ void Emulator::executeOpcode(unsigned char opcode)
 			A -= readData(1);
 			setFlagN(1);
 			setFlag0(A == 0);
-			setFlagH((tmp & 0xF0) != (A & 0xF0));
+			setFlagH((tmp & 0xF) < (readAddr(PC - 1) & 0xF));
 			setFlagC(A > tmp);
 			clock += 2;
 			break;
@@ -1022,16 +1037,13 @@ void Emulator::executeOpcode(unsigned char opcode)
 			break;
 		case 0xDA: // JP C, a16
 			if (getFlagC())
-			{
 				PC = readData(2);
-				clock += 1;
-			}
 			clock += 3;
 			break;
 		case 0xDC: // CALL C, a16
+			tmp = readData(2);
 			if (getFlagC())
 			{
-				tmp = readData(2);
 				push(PC);
 				PC = tmp;
 				clock += 3;
@@ -1043,7 +1055,7 @@ void Emulator::executeOpcode(unsigned char opcode)
 			A = A - readData(1) - getFlagC();
 			setFlagN(1);
 			setFlag0(A == 0);
-			setFlagH((tmp & 0xF0) != (A & 0xF0));
+			setFlagH((tmp & 0xF) < (readAddr(PC - 1) + getFlagC()));
 			setFlagC(A > tmp);
 			clock += 2;
 			break;
@@ -1054,14 +1066,14 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 4;
 			break;
 		case 0xE0: // LD (a8), A
-			writeByte(0xFF | readData(1), A);
+			writeByte(0xFF00 | readData(1), A);
 			clock += 3;
 			break;
 		case 0xE1: // POP HL
 			HL = pop();
 			break;
 		case 0xE2: // LD C, A
-			writeByte(0xFF | (unsigned short)C, A);
+			writeByte(0xFF00 | (unsigned short)C, A);
 			clock += 2;
 			break;
 		case 0xE5: // PUSH HL
@@ -1115,16 +1127,16 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 4;
 			break;
 		case 0xF0: // LD A, (a8) 
-			A = memory[0xFF00 | (unsigned short)readData(1)];// TODO bug PC: C411 routine, i: 16501 : registers ff44 increments in bgb but stays at 0 in my emulator
+			A = readAddr(0xFF00 | (unsigned short)readData(1));// TODO bug PC: C411 routine, i: 16501 : registers ff44 increments in bgb but stays at 0 in my emulator
 			clock += 3;
 			break;
 		case 0xF1: // POP AF
 			tmp = pop();
 			A = (tmp >> 8);
-			F = tmp & 0xFF;
+			F = tmp & 0xF0;
 			break;
 		case 0xF2: // LD A, C
-			A = memory[0xFF00 | (unsigned short)C];
+			A = readAddr(0xFF00 | (unsigned short)C);
 			clock += 2;
 			break;
 		case 0xF3: //DI
@@ -1137,6 +1149,10 @@ void Emulator::executeOpcode(unsigned char opcode)
 			break;
 		case 0xF6: // OR D8
 			A |= readData(1);
+			setFlag0(A == 0);
+			setFlagN(0);
+			setFlagH(0);
+			setFlagC(0);
 			clock += 2;
 			break;
 		case 0xF7: // RST 6
@@ -1145,13 +1161,15 @@ void Emulator::executeOpcode(unsigned char opcode)
 			PC |= (unsigned short)(readAddr(0x30) & 0xff);
 			clock += 4;
 			break;
-		case 0xF8: // LD HL, SP+s8
-			tmp = readData(1);
-			HL = SP + (char)tmp;
+		case 0xF8: // LD HL, SP+s8 //TODO recheck
+			short signedTmp;
+			tmp = HL;
+			signedTmp = (char)readData(1);
+			HL = SP + signedTmp;
 			setFlag0(0);
 			setFlagN(0);
-			setFlagH(tmp);
-			setFlagC((SP + (short)tmp) > 0xFF);
+			setFlagH((tmp & 0xF000) != (HL & 0xF000));
+			setFlagC(((int)signedTmp + (int)tmp > 0xFFFF || (int)signedTmp + (int)tmp < 0));
 			clock += 3;
 			break;
 		case 0xF9: // LD SP, HL
@@ -1159,7 +1177,7 @@ void Emulator::executeOpcode(unsigned char opcode)
 			clock += 2;
 			break;
 		case 0xFA: // LD A, (a16)
-			A = memory[readData(2)];
+			A = readAddr(readData(2));
 			clock += 4;
 			break;
 		case 0xFB: // EI
@@ -1170,7 +1188,7 @@ void Emulator::executeOpcode(unsigned char opcode)
 			tmp = A - readData(1);
 			setFlag0(tmp == 0);
 			setFlagN(1);
-			setFlagH((tmp & 0xF0) != (A & 0xF0));
+			setFlagH((A & 0xF) < (readAddr(PC - 1) & 0xF));
 			setFlagC(tmp > A);
 			clock += 2;
 			break;
@@ -1187,18 +1205,47 @@ void Emulator::executeOpcode(unsigned char opcode)
 
 void Emulator::printRegisters()
 {
-	std::cout << std::setfill('0') << "Current opcode: 0x" << std::setw(2) << std::hex << +readAddr(PC) << " with PC: 0x" << PC << std::endl;
+	std::cout << std::setfill('0') << "Current opcode: 0x";
+	if (+readAddr(PC) == 0xCB)
+		std::cout << std::setw(4) << std::hex << +((readAddr(PC) << 8) + readAddr(PC + 1)) << " with PC: 0x" << std::setw(4) << PC << std::endl;
+	else
+		std::cout << std::setw(2) << std::hex << +readAddr(PC) << " with PC: 0x" << std::setw(4) << PC << std::endl;
+
 	std::cout << std::setfill('0') << std::uppercase;
 	std::cout << "AF 0x" << std::setw(2) << +A << std::setw(2) << +F << std::endl;
 	std::cout << "BC: 0x" << std::setw(4) << +BC << std::endl;
 	std::cout << "DE: 0x" << std::setw(4) << +DE << std::endl;
 	std::cout << "HL: 0x" << std::setw(4) << +HL << std::endl;
-	std::cout << "SP: 0x" << std::setw(4) << +SP << std::endl << std::endl;
+	std::cout << "SP: 0x" << std::setw(4) << +SP << std::endl;
+	std::cout << "clock: " << std::dec << clock * 2 << std::endl;
+	std::cout << "0xff44: " << std::hex << +memory[0xFF44] << std::endl;
 	std::cout << std::endl << std::endl;
+}
+
+void Emulator::updateClockReg()
+{
+	unsigned int tmp = clock / 114;
+
+	if (tmp > clockCount)
+	{
+		clockCount += 1;
+		memory[0xFF44]++;
+		if (memory[0xFF44] > 153)
+			memory[0xFF44] = 0;
+	}
+	if (clock >= 70224 / 4)
+	{
+		clock = 0;
+		clockCount = 0;
+	}
+	//memory[0xFF41] |= 
 }
 
 void Emulator::launch()
 {
+	std::vector<unsigned int> debugOpcode;
+	std::vector<unsigned int> addresses;
+
 	std::string line;
 	BC = 0x0000;
 	DE = 0xFF56;
@@ -1206,17 +1253,45 @@ void Emulator::launch()
 	SP = 0xFFFE;
 	A = 0x11;
 	F = 0x80;
+	memory[0xFF44] = 0x90;
+	clock = 32916 / 2;
+	clockCount = clock / 114;
 
 	//while (std::getline(std::cin, line))
 	int i = 0;
-	while(true)
+	unsigned int opcode;
+	while(PC != 0xC7D2)
 	{
 		i++;
-		if (i >= 16488)
+		//if (i >= 16488)
 		{
-			std::cout << std::dec << i << ": ";
-			printRegisters();
+			//std::cout << std::dec << i << ": ";
+			//printRegisters();
 		}
-		executeOpcode(readByte());
+		opcode = readByte();
+		if (opcode == 0xCB)
+		{
+			opcode = readByte();
+			if (std::find(debugOpcode.begin(), debugOpcode.end(), 0xCB00 | opcode) == debugOpcode.end())
+			{
+				debugOpcode.push_back(0xCB00 | opcode);
+				addresses.push_back(PC - 2);
+			}
+			executeOpcode2(opcode);
+		}
+		else
+		{
+			if (std::find(debugOpcode.begin(), debugOpcode.end(), opcode) == debugOpcode.end())
+			{
+				debugOpcode.push_back(opcode);
+				addresses.push_back(PC - 1);
+			}
+			executeOpcode(opcode);
+		}
+		updateClockReg();
+	}
+	for (size_t size = 0; size < debugOpcode.size(); size++)
+	{
+		//std::cout << std::hex << debugOpcode[size] << " at address: 0x" << addresses[size] << std::endl;
 	}
 }
