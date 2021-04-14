@@ -8,7 +8,7 @@ CXX = g++ -Wall -Wextra
 
 all: back-end $(NAME)
 
-$(NAME): frontend-gtk3/main.cpp
+$(NAME): frontend-gtk3/main.cpp src/Emulator.cpp
 	g++ -c -o frontend-gtk3/main.o `pkg-config gtk+-3.0 --cflags` frontend-gtk3/main.cpp
 	g++ -o $(NAME) frontend-gtk3/main.o obj/Emulator.o `pkg-config gtk+-3.0 --libs`
 

@@ -1366,9 +1366,12 @@ unsigned int *Emulator::get_debug_tiles_screen() {
 		int tileIndex = 0;
 		for (int y=0; y<24; y++) {
 			for (int x=0; x<16; x++) {
-				uint8_t *tile = memory + 0x8000 + tileIndex*16 + 0x2000*bank;
+				uint8_t *vram = memory + 0x8000;
+				uint8_t *tile = vram + tileIndex*16; // + 0x2000*bank;
 				for (int v=0; v<8; v++) {
 					unsigned short pixels = ((uint16_t*)tile)[v];
+					if (bank == 1)
+						pixels = 0; // skip bank 2 because DMG doesn't have it
 					for (int u=0; u<8; u++) {
 						unsigned int px = pixels >> (7-u);
 						px = (px>>7&2) | (px&1);
