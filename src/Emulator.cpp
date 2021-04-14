@@ -1295,3 +1295,92 @@ void Emulator::launch()
 		//std::cout << std::hex << debugOpcode[size] << " at address: 0x" << addresses[size] << std::endl;
 	}
 }
+
+// Added by gbiebuyc
+
+void Emulator::reset() {
+	std::string line;
+	BC = 0x0000;
+	DE = 0xFF56;
+	HL = 0x000D;
+	SP = 0xFFFE;
+	A = 0x11;
+	F = 0x80;
+	memory[0xFF44] = 0x90;
+	clock = 32916 / 2;
+	clockCount = clock / 114;
+}
+
+#include <iostream>
+#include <fstream>
+
+void Emulator::load_rom(char *filename) {
+	std::ifstream file;
+	// if (!filename)
+	// 	file = std::ifstream(ROM_TEST, std::ios::binary);
+	// else
+		file = std::ifstream(filename, std::ios::binary);
+	if (!file.is_open())
+	{
+		std::cerr << "file not found" << std::endl;
+		return;
+	}
+	char*	memory = (char*)Emulator::getMemory();
+	file.read(memory, 10 * 1024 * 1024);
+	Emulator::reset();
+}
+
+void Emulator::run_one_instr() {
+	unsigned int opcode;
+	opcode = readByte();
+	if (opcode == 0xCB)
+	{
+		opcode = readByte();
+		executeOpcode2(opcode);
+	}
+	else
+	{
+		executeOpcode(opcode);
+	}
+	updateClockReg();
+}
+
+void Emulator::run_one_frame() {
+	int cycles_per_frame = 10000; // c'est approximatif, idk comment les clocks marchent
+	for (int i=0; i<cycles_per_frame; i++) {
+		Emulator::run_one_instr();
+	}
+}
+
+unsigned int *Emulator::get_debug_tiles_screen() {
+	static unsigned int *pixelbuf;
+
+	#define SCREEN_DEBUG_TILES_W (32 * (8 + 1))
+	#define SCREEN_DEBUG_TILES_H (24 * (8 + 1))
+	unsigned int dmg_screen_palette[] = {0xffffffff, 0xffaaaaaa, 0xff555555, 0xff000000};
+	if (!pixelbuf)
+		pixelbuf = (unsigned int*)malloc(SCREEN_DEBUG_TILES_W * SCREEN_DEBUG_TILES_H * 4);
+	for (int i=0; i<SCREEN_DEBUG_TILES_W*SCREEN_DEBUG_TILES_H; i++)
+		pixelbuf[i] = 0xffdddddd;
+	for (int bank=0; bank<2; bank++) {
+		int tileIndex = 0;
+		for (int y=0; y<24; y++) {
+			for (int x=0; x<16; x++) {
+				uint8_t *tile = memory + 0x8000 + tileIndex*16 + 0x2000*bank;
+				for (int v=0; v<8; v++) {
+					unsigned short pixels = ((uint16_t*)tile)[v];
+					for (int u=0; u<8; u++) {
+						unsigned int px = pixels >> (7-u);
+						px = (px>>7&2) | (px&1);
+						px = dmg_screen_palette[px];
+						int screenX = x*9 + u + bank*(SCREEN_DEBUG_TILES_W/2);
+						int screenY = y*9 + v;
+						pixelbuf[screenY*SCREEN_DEBUG_TILES_W + screenX] = px;
+					}
+				}
+				tileIndex++;
+			}
+		}
+	}
+	return pixelbuf;
+}

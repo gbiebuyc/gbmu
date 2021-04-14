@@ -1,8 +1,4 @@
 NAME = gbmu
-FRONTEND = frontend-gtk3
-CORE = ./gearboy_libretro.so
-SRC = $(wildcard $(FRONTEND)/*.c)
-OBJ = $(SRC:.c=.o)
 BACKEND = src
 SRC_BACKEND = main.cpp Emulator.cpp
 OBJ_BACKEND = $(addprefix obj/,$(SRC_BACKEND:.cpp=.o))
@@ -10,16 +6,14 @@ TEMPLATE_BACKEND = $(wildcard $(BACKEND)/*.tpp)
 CXX = g++ -Wall -Wextra
 .PHONY: all clean fclean re
 
-all: back-end #$(NAME)
+all: back-end $(NAME)
 
-$(NAME): $(OBJ)
-	cc -o $@ $^ $(CORE) `pkg-config gtk+-3.0 --libs`
+$(NAME): frontend-gtk3/main.cpp
+	g++ -c -o frontend-gtk3/main.o `pkg-config gtk+-3.0 --cflags` frontend-gtk3/main.cpp
+	g++ -o $(NAME) frontend-gtk3/main.o obj/Emulator.o `pkg-config gtk+-3.0 --libs`
 
 back-end: $(OBJ_BACKEND)
 	$(CXX) -o $@ $^ 
-
-%.o: %.c
-	cc -c -o $@ $< `pkg-config gtk+-3.0 --cflags` -g
 	
 obj/%.o: $(BACKEND)/%.cpp $(TEMPLATE_BACKEND)
 	@mkdir -p obj

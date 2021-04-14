@@ -45,6 +45,13 @@ public:
 	static unsigned short pop();
 	static void push(unsigned short reg);
 
+	// Added by gbiebuyc
+	static void reset();
+	static void load_rom(char *filename);
+	static void run_one_instr();
+	static void run_one_frame();
+	static unsigned int *get_debug_tiles_screen();
+
 private:
 	static unsigned char memory[16 * 1024 * 1024];//Rom will be loaded here, testing size
 	static unsigned char stack[64]; // TODO  whats the max stack?

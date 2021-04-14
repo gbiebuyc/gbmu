@@ -2,10 +2,12 @@
 #include <stdio.h>
 #include <sys/time.h>
 #include <math.h>
-#include "emu.h"
+#include "../src/Emulator.hpp"
 
 #define SCREEN_SCALE 2
 #define DEBUG_SCREEN_SCALE 2
+#define SCREEN_DEBUG_TILES_W (32 * (8 + 1))
+#define SCREEN_DEBUG_TILES_H (24 * (8 + 1))
 
 enum {PLAY, PAUSE} state;
 GtkWidget *window;
@@ -51,16 +53,17 @@ bool key_release_event(GtkWidget *widget, GdkEventKey *event, gpointer data)
 
 void refresh_screen() {
 	// Screen
-	GdkPixbuf *pixbuf = gdk_pixbuf_new_from_data(
-		(const guchar*)screen_pixels, GDK_COLORSPACE_RGB,
-		true, 8, 160, 144, 160*4, NULL, NULL);
-	GdkPixbuf *pixbuf_scaled = gdk_pixbuf_scale_simple(
-		pixbuf, 160*SCREEN_SCALE, 144*SCREEN_SCALE, GDK_INTERP_NEAREST);
-	gtk_image_set_from_pixbuf((GtkImage*)image, pixbuf_scaled);
-	g_object_unref(pixbuf);
-	g_object_unref(pixbuf_scaled);
+	// GdkPixbuf *pixbuf = gdk_pixbuf_new_from_data(
+	// 	(const guchar*)screen_pixels, GDK_COLORSPACE_RGB,
+	// 	true, 8, 160, 144, 160*4, NULL, NULL);
+	// GdkPixbuf *pixbuf_scaled = gdk_pixbuf_scale_simple(
+	// 	pixbuf, 160*SCREEN_SCALE, 144*SCREEN_SCALE, GDK_INTERP_NEAREST);
+	// gtk_image_set_from_pixbuf((GtkImage*)image, pixbuf_scaled);
+	// g_object_unref(pixbuf);
+	// g_object_unref(pixbuf_scaled);
 	// Tiles debug
-	gbmu_update_debug_tiles_screen();
+	unsigned int *screen_debug_tiles_pixels = Emulator::get_debug_tiles_screen();
+	GdkPixbuf *pixbuf, *pixbuf_scaled;
 	pixbuf = gdk_pixbuf_new_from_data(
 		(const guchar*)screen_debug_tiles_pixels, GDK_COLORSPACE_RGB,
 		true, 8, SCREEN_DEBUG_TILES_W, SCREEN_DEBUG_TILES_H, SCREEN_DEBUG_TILES_W*4, NULL, NULL);
@@ -70,18 +73,19 @@ void refresh_screen() {
 	g_object_unref(pixbuf);
 	g_object_unref(pixbuf_scaled);
 	// Debug text
-	gtk_text_buffer_set_text(txtbuf, gbmu_debug_info(), -1);
+	// gtk_text_buffer_set_text(txtbuf, gbmu_debug_info(), -1);
+	gtk_text_buffer_set_text(txtbuf, "hello world\n", -1);
 }
 
 void update_input() {
-	gbmu_keys[GBMU_A] = keyboard_state[GDK_KEY_k];
-	gbmu_keys[GBMU_B] = keyboard_state[GDK_KEY_j];
-	gbmu_keys[GBMU_START] = keyboard_state[GDK_KEY_Return];
-	gbmu_keys[GBMU_SELECT] = keyboard_state[GDK_KEY_Shift_L] || keyboard_state[GDK_KEY_Shift_R];
-	gbmu_keys[GBMU_UP] = keyboard_state[GDK_KEY_z] || keyboard_state[GDK_KEY_w];
-	gbmu_keys[GBMU_LEFT] = keyboard_state[GDK_KEY_q] || keyboard_state[GDK_KEY_a];
-	gbmu_keys[GBMU_DOWN] = keyboard_state[GDK_KEY_s];
-	gbmu_keys[GBMU_RIGHT] = keyboard_state[GDK_KEY_d];
+	// gbmu_keys[GBMU_A] = keyboard_state[GDK_KEY_k];
+	// gbmu_keys[GBMU_B] = keyboard_state[GDK_KEY_j];
+	// gbmu_keys[GBMU_START] = keyboard_state[GDK_KEY_Return];
+	// gbmu_keys[GBMU_SELECT] = keyboard_state[GDK_KEY_Shift_L] || keyboard_state[GDK_KEY_Shift_R];
+	// gbmu_keys[GBMU_UP] = keyboard_state[GDK_KEY_z] || keyboard_state[GDK_KEY_w];
+	// gbmu_keys[GBMU_LEFT] = keyboard_state[GDK_KEY_q] || keyboard_state[GDK_KEY_a];
+	// gbmu_keys[GBMU_DOWN] = keyboard_state[GDK_KEY_s];
+	// gbmu_keys[GBMU_RIGHT] = keyboard_state[GDK_KEY_d];
 }
 
 void update_buttons() {
@@ -97,14 +101,14 @@ void update_buttons() {
 			gtk_widget_set_sensitive(btn_run_instr, true);
 			break;
 	}
-	if (hardwareMode == MODE_DMG)
-		gtk_button_set_label((GtkButton*)btn_force_dmg_gbc, "Force GBC");
-	else if (hardwareMode == MODE_GBC)
-		gtk_button_set_label((GtkButton*)btn_force_dmg_gbc, "Force DMG");
+	// if (hardwareMode == MODE_DMG)
+	// 	gtk_button_set_label((GtkButton*)btn_force_dmg_gbc, "Force GBC");
+	// else if (hardwareMode == MODE_GBC)
+	// 	gtk_button_set_label((GtkButton*)btn_force_dmg_gbc, "Force DMG");
 }
 
 void load_rom(char *filename) {
-	gbmu_load_rom(filename);
+	Emulator::load_rom(filename);
 	state = PLAY;
 	update_buttons();
 }
@@ -136,19 +140,19 @@ bool btn_pause_clicked(GtkWidget *widget, GdkEventKey *event, gpointer data) {
 }
 
 bool btn_reset_clicked(GtkWidget *widget, GdkEventKey *event, gpointer data) {
-	gbmu_reset();
+	Emulator::reset();
 	refresh_screen();
 }
 
 bool btn_run_frame_clicked(GtkWidget *widget, GdkEventKey *event, gpointer data) {
 	update_input();
-	gbmu_run_one_frame();
+	Emulator::run_one_frame();
 	refresh_screen();
 }
 
 bool btn_run_instr_clicked(GtkWidget *widget, GdkEventKey *event, gpointer data) {
 	update_input();
-	gbmu_run_one_instr();
+	Emulator::run_one_instr();
 	refresh_screen();
 }
 
@@ -168,23 +172,23 @@ void drag_data_received(GtkWidget *widget, GdkDragContext *context, int x, int y
 }
 
 void btn_force_dmg_gbc_clicked() {
-	if (hardwareMode == MODE_DMG)
-		hardwareMode = MODE_GBC;
-	else if (hardwareMode == MODE_GBC)
-		hardwareMode = MODE_DMG;
-	gbmu_reset();
+	// if (hardwareMode == MODE_DMG)
+	// 	hardwareMode = MODE_GBC;
+	// else if (hardwareMode == MODE_GBC)
+	// 	hardwareMode = MODE_DMG;
+	Emulator::reset();
 	update_buttons();
 	refresh_screen();
 }
 
 
 int main(int ac, char **av) {
-	if (!(keyboard_state = calloc(0x10000, sizeof(bool)))) {
+	if (!(keyboard_state = (bool*)calloc(0x10000, sizeof(bool)))) {
 		perror("calloc");
 		exit(EXIT_FAILURE);
 	}
 
-	gbmu_init();
+	// gbmu_init();
 
 	gtk_init(&ac, &av);
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -245,18 +249,18 @@ int main(int ac, char **av) {
 	gtk_box_pack_start (GTK_BOX (box_speed_control), radio4, 0, 0, 0);
 	gtk_toggle_button_set_active((GtkToggleButton*)radio2, true);
 
-	gtk_container_add(GTK_CONTAINER(hbox), gtk_separator_new(0));
+	gtk_container_add(GTK_CONTAINER(hbox), gtk_separator_new((GtkOrientation)0));
 
 	image = gtk_image_new();
 	gtk_widget_set_size_request(image, 160*SCREEN_SCALE, 144*SCREEN_SCALE);
 	gtk_container_add(GTK_CONTAINER(hbox), image);
-	gtk_container_add(GTK_CONTAINER(hbox), gtk_separator_new(0));
+	gtk_container_add(GTK_CONTAINER(hbox), gtk_separator_new((GtkOrientation)0));
 
 	image_debug = gtk_image_new();
 	gtk_widget_set_size_request(image_debug, SCREEN_DEBUG_TILES_W * DEBUG_SCREEN_SCALE,
 		SCREEN_DEBUG_TILES_H * DEBUG_SCREEN_SCALE);
 	gtk_container_add(GTK_CONTAINER(hbox), image_debug);
-	gtk_container_add(GTK_CONTAINER(hbox), gtk_separator_new(0));
+	gtk_container_add(GTK_CONTAINER(hbox), gtk_separator_new((GtkOrientation)0));
 
 	txtview = gtk_text_view_new();
 	gtk_text_view_set_top_margin((GtkTextView*)txtview, 5);
@@ -287,7 +291,7 @@ int main(int ac, char **av) {
 
 		if (state == PLAY) {
 			update_input();
-			gbmu_run_one_frame();
+			Emulator::run_one_frame();
 			refresh_screen();
 		}
 
@@ -313,5 +317,5 @@ int main(int ac, char **av) {
 	}
 
 	free(keyboard_state);
-	gbmu_quit();
+	// gbmu_quit();
 }
